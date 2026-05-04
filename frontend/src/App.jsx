@@ -73,13 +73,19 @@ function formatTime(value) {
   return [minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
 }
 
-function parseRoute(pathname) {
+function parseRoute(pathname, search) {
+  const params = new URLSearchParams(search);
+
   if (pathname === "/") {
     return { page: "home" };
   }
 
   if (pathname === "/browse") {
     return { page: "browse" };
+  }
+
+  if (pathname === "/join") {
+    return { page: "join", roomId: params.get("room") || "" };
   }
 
   if (pathname.startsWith("/movie/")) {
@@ -98,11 +104,17 @@ function parseRoute(pathname) {
 }
 
 function useRouter() {
-  const [pathname, setPathname] = useState(window.location.pathname);
+  const [locationState, setLocationState] = useState({
+    pathname: window.location.pathname,
+    search: window.location.search
+  });
 
   useEffect(() => {
     const onPopState = () => {
-      setPathname(window.location.pathname);
+      setLocationState({
+        pathname: window.location.pathname,
+        search: window.location.search
+      });
     };
 
     window.addEventListener("popstate", onPopState);
@@ -110,16 +122,25 @@ function useRouter() {
   }, []);
 
   const navigate = (nextPath) => {
-    if (nextPath === window.location.pathname) {
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+
+    if (nextPath === currentPath) {
       return;
     }
 
     window.history.pushState({}, "", nextPath);
-    setPathname(nextPath);
+    setLocationState({
+      pathname: window.location.pathname,
+      search: window.location.search
+    });
     window.scrollTo({ top: 0, behavior: "instant" });
   };
 
-  return { route: parseRoute(pathname), pathname, navigate };
+  return {
+    route: parseRoute(locationState.pathname, locationState.search),
+    pathname: locationState.pathname,
+    navigate
+  };
 }
 
 function useWatchParty({ enabled, pendingAction }) {
@@ -297,6 +318,7 @@ function useWatchParty({ enabled, pendingAction }) {
     latestPlayerEvent,
     roomError,
     roomId: roomIdRef.current,
+    currentUserName: userNameRef.current,
     sendPlayerEvent(payload) {
       if (socketRef.current?.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({ type: "player_event", ...payload }));
@@ -410,10 +432,23 @@ function RoomJoinModal({ joinName, joinRoomId, joinError, setJoinName, setJoinRo
 }
 
 function ReactionTray({ reactions }) {
+  const getReactionStyle = (reaction) => {
+    const seed = Array.from(reaction.reactionId).reduce((total, char) => total + char.charCodeAt(0), 0);
+    const driftX = ((seed % 17) - 8) * 4;
+    const driftRotate = ((seed % 7) - 3) * 1.25;
+    const delay = (seed % 5) * 0.03;
+
+    return {
+      "--drift-x": `${driftX}px`,
+      "--drift-rotate": `${driftRotate}deg`,
+      "--float-delay": `${delay}s`
+    };
+  };
+
   return (
     <div className="reaction-layer" aria-live="polite">
       {reactions.map((reaction) => (
-        <div className="reaction-pill" key={reaction.reactionId}>
+        <div className="reaction-pill" key={reaction.reactionId} style={getReactionStyle(reaction)}>
           <span className="reaction-emoji">{reaction.emoji}</span>
           <span>{reaction.senderLabel}</span>
         </div>
@@ -422,7 +457,7 @@ function ReactionTray({ reactions }) {
   );
 }
 
-function ChatSidebar({ messages, onSend, onReact }) {
+function ChatSidebar({ messages, currentUserName, onSend, onReact }) {
   const [text, setText] = useState("");
   const listRef = useRef(null);
 
@@ -456,7 +491,10 @@ function ChatSidebar({ messages, onSend, onReact }) {
           </div>
         ) : (
           messages.map((message, index) => (
-            <div className="chat-item" key={`${message.senderId}-${message.receivedAt}-${index}`}>
+            <div
+              className={`chat-item${message.senderLabel === currentUserName ? " is-own-message" : ""}`}
+              key={`${message.senderId}-${message.receivedAt}-${index}`}
+            >
               <strong>{message.senderLabel}</strong>
               <span>{message.text}</span>
             </div>
@@ -484,7 +522,7 @@ function ChatSidebar({ messages, onSend, onReact }) {
   );
 }
 
-function VideoPlayer({ src, mode, externalEvent, onPlayerEvent, reactions }) {
+function VideoPlayer({ src, mode, externalEvent, onPlayerEvent, onReact, reactions }) {
   const videoRef = useRef(null);
   const skipEmitRef = useRef(false);
   const shellRef = useRef(null);
@@ -645,10 +683,28 @@ function VideoPlayer({ src, mode, externalEvent, onPlayerEvent, reactions }) {
           </div>
 
           <div className="controls">
-            <div className="player-status-copy">
-              <strong>{mode === "watch-party" ? "Synchronized room playback" : "Private viewing mode"}</strong>
-              <span>{mode === "watch-party" ? "Play, pause, and seeking are mirrored live for everyone in the room." : "A clean, local playback surface without room sync or chat."}</span>
-            </div>
+            {mode === "watch-party" ? (
+              <div className="player-reactions">
+                <span className="player-reactions-label">React live</span>
+                <div className="player-reactions-row">
+                  {REACTION_OPTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      className="player-reaction-chip"
+                      onClick={() => onReact?.(emoji)}
+                      type="button"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="player-status-copy">
+                <strong>Private viewing mode</strong>
+                <span>A clean, local playback surface without room sync or chat.</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -801,6 +857,27 @@ function BrowsePage({ movies, loading, loadError, navigate, onQuickStart }) {
   );
 }
 
+function JoinPage({ joinName, joinRoomId, joinError, setJoinName, onJoin }) {
+  return (
+    <section className="page-section join-page">
+      <div className="join-card">
+        <h1 className="detail-title">Join room</h1>
+        <div className="field-stack">
+          <input value={joinRoomId} readOnly aria-label="Room ID" />
+          <input
+            value={joinName}
+            onChange={(event) => setJoinName(event.target.value)}
+            placeholder="Your name"
+            aria-label="Your name"
+          />
+          <button onClick={onJoin}>Join now</button>
+          {joinError ? <p className="error-text">{joinError}</p> : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MovieDetailPage({ movie, navigate, onQuickStart, onOpenJoinModal }) {
   if (!movie) {
     return (
@@ -863,13 +940,13 @@ function SoloWatchPage({ movie, navigate }) {
           </div>
           <button className="ghost-button" onClick={() => navigate(`/movie/${movie.id}`)}>Back to details</button>
         </div>
-        <VideoPlayer src={`${API_BASE}${movie.url}`} mode="solo" reactions={[]} />
+          <VideoPlayer src={`${API_BASE}${movie.url}`} mode="solo" reactions={[]} />
       </div>
     </section>
   );
 }
 
-function WatchPartyPage({ viewState, wsState, navigate }) {
+function WatchPartyPage({ viewState, wsState, navigate, onCopyRoomId, onShareRoom, copyRoomLabel, shareRoomLabel }) {
   const connectionLabel = wsState.status === "connected"
     ? "Connected"
     : wsState.status === "reconnecting"
@@ -890,18 +967,24 @@ function WatchPartyPage({ viewState, wsState, navigate }) {
               <span className="meta-pill">Realtime chat</span>
             </div>
           </div>
-          <button className="ghost-button" onClick={() => navigate("/")}>Leave</button>
+          <div className="room-actions">
+            <button className="ghost-button" onClick={onCopyRoomId} type="button">{copyRoomLabel}</button>
+            <button className="ghost-button" onClick={onShareRoom} type="button">{shareRoomLabel}</button>
+            <button className="ghost-button" onClick={() => navigate("/")} type="button">Leave</button>
+          </div>
         </div>
-        <VideoPlayer
-          src={viewState.movieUrl}
-          mode="watch-party"
-          externalEvent={wsState.latestPlayerEvent}
-          onPlayerEvent={(payload) => wsState.sendPlayerEvent(payload)}
-          reactions={wsState.reactions}
-        />
+          <VideoPlayer
+            src={viewState.movieUrl}
+            mode="watch-party"
+            externalEvent={wsState.latestPlayerEvent}
+            onPlayerEvent={(payload) => wsState.sendPlayerEvent(payload)}
+            onReact={(emoji) => wsState.sendReaction(emoji)}
+            reactions={wsState.reactions}
+          />
       </div>
       <ChatSidebar
         messages={wsState.messages}
+        currentUserName={wsState.currentUserName}
         onSend={(text) => wsState.sendChatMessage(text)}
         onReact={(emoji) => wsState.sendReaction(emoji)}
       />
@@ -921,6 +1004,8 @@ export default function App() {
   const [joinError, setJoinError] = useState("");
   const [hostName, setHostName] = useState("");
   const [hostError, setHostError] = useState("");
+  const [copyRoomLabel, setCopyRoomLabel] = useState("Copy room ID");
+  const [shareRoomLabel, setShareRoomLabel] = useState("Share");
   const [watchPartyView, setWatchPartyView] = useState({
     pendingAction: null,
     movieId: "",
@@ -928,6 +1013,14 @@ export default function App() {
     movieUrl: "",
     roomId: ""
   });
+
+  useEffect(() => {
+    if (route.page === "join" && route.roomId) {
+      setJoinRoomId(route.roomId);
+      setJoinError("");
+      setJoinModalOpen(false);
+    }
+  }, [route.page, route.roomId]);
 
   useEffect(() => {
     const loadMovies = async () => {
@@ -1030,6 +1123,37 @@ export default function App() {
     navigate("/watch/party");
   };
 
+  const copyText = async (value) => {
+    if (!value) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      const helper = document.createElement("textarea");
+      helper.value = value;
+      helper.setAttribute("readonly", "");
+      helper.style.position = "absolute";
+      helper.style.left = "-9999px";
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand("copy");
+      document.body.removeChild(helper);
+    }
+  };
+
+  const shareRoomUrl = watchPartyView.roomId
+    ? `${window.location.origin}/join?room=${encodeURIComponent(watchPartyView.roomId)}`
+    : "";
+
+  const flashLabel = (setter, idleText, activeText) => {
+    setter(activeText);
+    window.setTimeout(() => {
+      setter(idleText);
+    }, 1600);
+  };
+
   const startQuickAction = (mode) => {
     if (!selectedMovie) {
       return;
@@ -1094,6 +1218,19 @@ export default function App() {
           />
         ) : null}
 
+        {route.page === "join" ? (
+          <JoinPage
+            joinName={joinName}
+            joinRoomId={joinRoomId}
+            joinError={joinError}
+            setJoinName={(value) => {
+              setJoinName(value);
+              setJoinError("");
+            }}
+            onJoin={joinRoom}
+          />
+        ) : null}
+
         {route.page === "movie" ? (
           <MovieDetailPage
             movie={currentMovie}
@@ -1111,7 +1248,21 @@ export default function App() {
         ) : null}
 
         {route.page === "watch-party" ? (
-          <WatchPartyPage viewState={watchPartyView} wsState={wsState} navigate={navigate} />
+          <WatchPartyPage
+            viewState={watchPartyView}
+            wsState={wsState}
+            navigate={navigate}
+            onCopyRoomId={async () => {
+              await copyText(watchPartyView.roomId);
+              flashLabel(setCopyRoomLabel, "Copy room ID", "Copied");
+            }}
+            onShareRoom={async () => {
+              await copyText(shareRoomUrl);
+              flashLabel(setShareRoomLabel, "Share", "Copied");
+            }}
+            copyRoomLabel={copyRoomLabel}
+            shareRoomLabel={shareRoomLabel}
+          />
         ) : null}
 
         {route.page === "not-found" ? (

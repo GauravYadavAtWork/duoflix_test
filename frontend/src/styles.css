@@ -389,6 +389,15 @@ input::placeholder {
   margin-top: 1rem;
 }
 
+.join-page {
+  display: flex;
+  justify-content: center;
+}
+
+.join-page .join-card {
+  width: min(460px, 100%);
+}
+
 .page-section-landing {
   display: grid;
   gap: 1.25rem;
@@ -481,6 +490,13 @@ input::placeholder {
   justify-content: space-between;
   align-items: start;
   gap: 1rem;
+}
+
+.room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: flex-end;
 }
 
 .catalog-stat {
@@ -687,10 +703,12 @@ input::placeholder {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 1.15rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .watch-main {
+  display: flex;
+  flex-direction: column;
   background:
     linear-gradient(180deg, rgba(12, 18, 29, 0.96), rgba(7, 11, 19, 0.98));
   border-color: rgba(173, 198, 255, 0.14);
@@ -714,9 +732,13 @@ input::placeholder {
 
 .player-shell {
   margin-top: 1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .player-stage {
+  flex: 1;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius);
   background:
@@ -865,12 +887,17 @@ input::placeholder {
 .reaction-layer {
   pointer-events: none;
   position: absolute;
-  inset: 1rem 1rem auto auto;
+  left: 50%;
+  right: auto;
+  bottom: 1.5rem;
+  top: auto;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 0.55rem;
+  align-items: center;
+  gap: 0.7rem;
   z-index: 2;
+  transform: translateX(-50%);
+  width: 0;
 }
 
 .reaction-pill {
@@ -883,7 +910,10 @@ input::placeholder {
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #f7fbff;
   backdrop-filter: blur(10px);
-  animation: reaction-in 260ms ease;
+  animation: reaction-float 4.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  animation-delay: var(--float-delay, 0s);
+  white-space: nowrap;
+  will-change: transform, opacity;
 }
 
 .reaction-emoji {
@@ -941,6 +971,38 @@ input::placeholder {
   max-width: 40ch;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.player-reactions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.player-reactions-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.player-reactions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.player-reaction-chip {
+  min-width: 0;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f7fbff;
+  box-shadow: none;
+}
+
+.player-reaction-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .control-button,
@@ -1038,7 +1100,7 @@ input::placeholder {
 .chat-sidebar {
   display: flex;
   flex-direction: column;
-  min-height: 72vh;
+  height: 100%;
   background:
     linear-gradient(180deg, rgba(12, 18, 29, 0.96), rgba(7, 11, 19, 0.98));
   border-color: rgba(173, 198, 255, 0.14);
@@ -1081,6 +1143,10 @@ input::placeholder {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.chat-item {
+  max-width: 88%;
+}
+
 .chat-item strong,
 .chat-item span {
   display: block;
@@ -1089,6 +1155,13 @@ input::placeholder {
 .chat-item span {
   margin-top: 0.3rem;
   color: rgba(232, 237, 247, 0.9);
+}
+
+.chat-item.is-own-message {
+  margin-left: auto;
+  background: rgba(113, 167, 255, 0.14);
+  border-color: rgba(113, 167, 255, 0.22);
+  text-align: right;
 }
 
 .chat-empty p,
@@ -1123,15 +1196,25 @@ input::placeholder {
   background: linear-gradient(180deg, rgba(16, 24, 37, 0.94), rgba(8, 13, 23, 0.96));
 }
 
-@keyframes reaction-in {
+@keyframes reaction-float {
   from {
-    opacity: 0;
-    transform: translateY(8px);
+    opacity: 0.88;
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
   }
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  100% {
+    opacity: 0;
+    transform:
+      translate3d(var(--drift-x, 0px), -220px, 0)
+      scale(0.97)
+      rotate(var(--drift-rotate, 0deg));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reaction-pill {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
   }
 }
 
@@ -1154,7 +1237,7 @@ input::placeholder {
   }
 
   .chat-sidebar {
-    min-height: 0;
+    height: auto;
   }
 }
 
